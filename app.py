@@ -25,6 +25,15 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
+        fonts = {'/fonts/newsreader.woff2': 'newsreader.woff2', '/fonts/schibsted-grotesk.woff2': 'schibsted-grotesk.woff2'}
+        if self.path in fonts:
+            body = (Path(__file__).parent / 'fonts' / fonts[self.path]).read_bytes()
+            self.send_response(200)
+            self.send_header('Content-Type', 'font/woff2')
+            self.send_header('Content-Length', str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if self.path != '/':
             self.send_error(404)
             return

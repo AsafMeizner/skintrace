@@ -9,3 +9,6 @@ demo/preview/
 demo/video/
 demo/video-*/
 demo/render-*.log
+
+check-before/
+check-after/

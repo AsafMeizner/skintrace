@@ -4,14 +4,15 @@ viewport: [1440, 1000]
 scale: 1.5
 voice: af_heart
 mood: calm
+calm: true
 max_seconds: 175
 beats:
   - card: {kind: title, tag: Cosmetic comparison prototype, heading: SkinTrace, sub: "Check capture conditions before comparing **cosmetic scores**."}
     say: "Did your skin change, or did the lighting change? SkinTrace puts capture conditions before cosmetic score comparisons."
   - say: "This is the offline demo mode. The scores on screen are invented samples, so you can try the comparison guardrails without sending any photo."
     do:
-      - zoom: '.scores'
-        seconds: 5
+      - move: '.scores'
+      - pause: 5
       - callout: Synthetic scores throughout
   - say: "The two samples have different texture and pore scores. Before displaying the differences, we ask whether the capture conditions match."
     do:

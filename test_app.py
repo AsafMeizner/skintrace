@@ -34,6 +34,19 @@ class AppTests(unittest.TestCase):
     def photo(self, consent=True):
         return {'image': base64.b64encode(PHOTO).decode(), 'content_type': 'image/png', 'consent': consent}
 
+    def test_font_allowlist(self):
+        for path, expected in [('/fonts/newsreader.woff2', 200), ('/fonts/schibsted-grotesk.woff2', 200), ('/fonts/../app.py', 404)]:
+            conn = http.client.HTTPConnection(*self.server.server_address, timeout=3)
+            conn.request('GET', path)
+            response = conn.getresponse()
+            self.assertEqual(response.status, expected)
+            if expected == 200:
+                self.assertEqual(response.getheader('Content-Type'), 'font/woff2')
+                self.assertGreater(len(response.read()), 1000)
+            else:
+                response.read()
+            conn.close()
+
     def test_full_mocked_workflow(self):
         status, started = self.post('/analysis/start', self.photo())
         self.assertEqual(status, 200)
