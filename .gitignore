@@ -1,0 +1,11 @@
+__pycache__/
+.pytest_cache/
+.env
+.env.*
+*.pyc
+
+# Locally generated narration and video
+demo/preview/
+demo/video/
+demo/video-*/
+demo/render-*.log

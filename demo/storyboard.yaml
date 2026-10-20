@@ -1,0 +1,49 @@
+title: SkinTrace prototype walkthrough
+url: http://127.0.0.1:8766/
+viewport: [1440, 1000]
+scale: 1.5
+voice: af_heart
+mood: calm
+max_seconds: 175
+beats:
+  - card: {kind: title, tag: Cosmetic comparison prototype, heading: SkinTrace, sub: "Check capture conditions before comparing **cosmetic scores**."}
+    say: "Did your skin change, or did the lighting change? SkinTrace puts capture conditions before cosmetic score comparisons."
+  - say: "This is the offline demo mode. The scores on screen are invented samples, so you can try the comparison guardrails without sending any photo."
+    do:
+      - zoom: '.scores'
+        seconds: 5
+      - callout: Synthetic scores throughout
+  - say: "The two samples have different texture and pore scores. Before displaying the differences, we ask whether the capture conditions match."
+    do:
+      - scroll: '#form'
+      - move: '#lighting'
+  - say: "Leave a condition unchecked, and SkinTrace pauses the comparison. A number alone should not encourage an unsupported conclusion."
+    do:
+      - click: '#submit'
+      - wait: '#result h2'
+      - zoom: '#result'
+        seconds: 5
+      - callout: Capture conditions come first
+  - say: "Now confirm the same lighting, the same camera and settings, and the same face position and angle. These are user confirmations, not scientific validation."
+    do:
+      - click: '#lighting'
+      - click: '#camera'
+      - click: '#pose'
+  - say: "The comparison now shows texture up five points and pores down two. Higher raw scores are more favorable. Neither change proves a treatment worked."
+    do:
+      - click: '#submit'
+      - wait: 'text=Cosmetic score differences'
+      - zoom: '#result'
+        seconds: 6
+      - callout: Differences do not prove causation
+  - say: "The photo interface requires consent before sending an image. By default, live analysis is switched off. A person turns it on with their own YouCam key."
+    do:
+      - scroll: '#analysis'
+      - move: '#consent'
+      - callout: Live analysis off by default
+  - say: "We verified the live path once, with one consenting adult's selfie: upload, analysis task, and polling returned raw texture of sixty seven and pore of fifty nine. That is one run, not a clinical result."
+    do:
+      - move: '#analyze'
+      - pause: 3
+  - card: {kind: outro, heading: SkinTrace, sub: "Capture conditions first. **Interpret changes carefully.**", tags: [Python, YouCam API, Consent, MIT]}
+    say: "SkinTrace helps people question a comparison before trusting it. Cosmetic scores are not diagnoses. SkinTrace shows the guardrails, and the live YouCam path works."
