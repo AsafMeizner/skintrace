@@ -1,5 +1,5 @@
 import unittest
-from core import parse_result, compare
+from core import parse_result
 
 
 def result(output, status='success'):
@@ -47,21 +47,6 @@ class ResultTests(unittest.TestCase):
         for output in ([], None, [{'type': '', 'raw_score': 50}], [{'type': 'wrinkle', 'raw_score': 50}] * 2):
             with self.subTest(output=output), self.assertRaises(ValueError):
                 parse_result(result(output))
-
-    def test_each_capture_confirmation_required(self):
-        for flags in ((False, True, True), (True, False, True), (True, True, False), (1, True, True)):
-            comparison = compare({'wrinkle': 60}, {'wrinkle': 70}, same_lighting=flags[0], same_camera=flags[1], same_pose=flags[2])
-            self.assertFalse(comparison['comparable'])
-            self.assertEqual(comparison['changes'], {})
-
-    def test_compare_shared_concerns_only(self):
-        comparison = compare({'wrinkle': 60, 'pore': 80}, {'wrinkle': 72, 'redness': 50}, same_lighting=True, same_camera=True, same_pose=True)
-        self.assertEqual(comparison['changes'], {'wrinkle': 12})
-        self.assertIn('do not establish treatment effects', comparison['note'])
-
-    def test_no_shared_concerns(self):
-        with self.assertRaises(ValueError):
-            compare({'pore': 50}, {'wrinkle': 60}, same_lighting=True, same_camera=True, same_pose=True)
 
 
 if __name__ == '__main__':

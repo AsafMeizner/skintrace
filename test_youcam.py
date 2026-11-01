@@ -83,3 +83,23 @@ class WorkflowTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class ActionsAndErrorsTests(unittest.TestCase):
+    def test_unknown_or_repeated_concerns_rejected_before_any_call(self):
+        from youcam import YouCamClient
+        t = Transport()
+        c = YouCamClient('k', t, allowed_upload_hosts=[HOST])
+        for bad in (['nonsense'], ['pore', 'pore'], ['hd_pore']):
+            with self.assertRaises(ValueError):
+                c.start(PHOTO, 'image/png', consent=True, actions=bad)
+        self.assertEqual(t.calls, [])
+
+    def test_task_error_becomes_retake_advice(self):
+        from youcam import YouCamClient, YouCamTaskError
+        t = Transport()
+        t.result = {'status': 200, 'data': {'task_status': 'error', 'error': 'error_src_face_too_small'}}
+        c = YouCamClient('k', t, allowed_upload_hosts=[HOST])
+        with self.assertRaises(YouCamTaskError) as ctx:
+            c.poll_once('task1')
+        self.assertIn('60%', ctx.exception.advice)

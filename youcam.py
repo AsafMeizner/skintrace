@@ -11,6 +11,28 @@ from core import parse_result
 BASE = 'https://yce-api-01.makeupar.com/s2s/v2.0'
 
 
+SD_ACTIONS = ('wrinkle', 'droopy_upper_eyelid', 'droopy_lower_eyelid', 'firmness', 'acne', 'moisture', 'eye_bag',
+              'dark_circle_v2', 'age_spot', 'radiance', 'redness', 'oiliness', 'pore', 'texture', 'tear_trough', 'skin_type')
+DEFAULT_ACTIONS = ('texture', 'pore')
+
+# YouCam's own quality errors, turned into what the person should do.
+RETAKE = {
+    'error_lighting_dark': 'YouCam found the light too dark. Face a window or lamp and retake.',
+    'error_src_face_too_small': 'YouCam needs the face to be wider than 60% of the photo. Move closer or crop to the face.',
+    'error_src_face_out_of_bound': 'Part of the face is outside the photo. Keep the whole face in frame.',
+    'error_below_min_image_size': 'The photo is too small. Use a larger image.',
+    'error_exceed_max_image_size': 'The photo is too large. Use a smaller image.',
+}
+
+
+class YouCamTaskError(Exception):
+    """YouCam reported a failed task; `code` is its error string and `advice` says how to retake."""
+    def __init__(self, code):
+        super().__init__(code)
+        self.code = code
+        self.advice = RETAKE.get(code, 'YouCam could not analyse this photo. Retake it in even light, facing the camera.')
+
+
 class YouCamClient:
     def __init__(self, key, transport, *, allowed_upload_hosts=()):
         if not isinstance(key, str) or not key.strip():
@@ -30,7 +52,10 @@ class YouCamClient:
             raise ValueError('Invalid API response')
         return response
 
-    def start(self, image, content_type, *, consent=False):
+    def start(self, image, content_type, *, consent=False, actions=None):
+        actions = list(actions or DEFAULT_ACTIONS)
+        if not 1 <= len(actions) <= 16 or any(a not in SD_ACTIONS for a in actions) or len(set(actions)) != len(actions):
+            raise ValueError('Unknown or repeated skin concern')
         # Consent is checked before metadata registration or any image transfer.
         if consent is not True:
             raise ValueError('Explicit consent to send this photo to YouCam is required')
@@ -81,7 +106,7 @@ class YouCamClient:
         # Deliberately separate headers: API key never goes to storage.
         self.transport.request('PUT', url, safe_headers, image)
         task = self._api('POST', '/task/skin-analysis', {
-            'src_file_id': file_id, 'dst_actions': ['texture', 'pore'], 'format': 'json'})
+            'src_file_id': file_id, 'dst_actions': list(actions or DEFAULT_ACTIONS), 'format': 'json'})
         task_id = task['data'].get('task_id')
         if not isinstance(task_id, str) or not task_id:
             raise ValueError('Missing task identifier')
@@ -93,4 +118,7 @@ class YouCamClient:
         response = self._api('GET', '/task/skin-analysis/' + quote(task_id, safe=''))
         if response['data'].get('task_status') == 'running':
             return None
+        if response['data'].get('task_status') == 'error':
+            code = response['data'].get('error')
+            raise YouCamTaskError(code if isinstance(code, str) else 'unknown_error')
         return parse_result(response)

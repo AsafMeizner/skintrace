@@ -1,48 +1,44 @@
 # SkinTrace
 
-A local prototype that checks capture conditions before comparing cosmetic skin scores.
+Skin-analysis scores move with the window, the distance and the angle of the head. SkinTrace measures those capture conditions from the pixels of two selfies, before anything is compared, and then either names a change or says exactly how to retake.
+
+Everything below runs locally. Photos are read in memory by the app and are not saved or sent anywhere. With a YouCam key on the server and the user's consent, a pair that passes the local check is also scored by YouCam (15 SD concerns, `/compare-photos` with `youcam: true`) and each concern's change is judged against YouCam's measured wobble; a pair the local check refuses spends no YouCam units. Without a key the page says YouCam is off. This path is tested with a simulated YouCam service (`test_app.py`), and was exercised live once on the experiment below.
+
+## What it computes (`engine/`)
+
+1. `engine/measure.py`: per photo, from MediaPipe FaceMesh landmarks (local, bundled model) and OpenCV: face scale and position, head roll/yaw/pitch, L*a*b* medians of left cheek, right cheek and forehead polygons, light direction (left vs right cheek brightness), sharpness.
+2. `engine/noise_floor.json`: test-retest SD and MDC95 (1.96 x sqrt(2) x SD) per metric, from six same-condition repeats in each of two lighting set-ups (`spike/analyse.py`).
+3. `engine/compare.py: gate`: a pair is "not comparable" if scale, yaw, roll, pitch, face brightness or light direction differs by more than that metric's MDC95, or a face is cut off. Each reason carries retake advice.
+4. `engine/compare.py: verdict`: if comparable, the change in left-cheek a* minus right-cheek a* (so a shift of both cheeks together is reported separately, not as a one-cheek change) is judged against its own MDC95: "left cheek redder", "right cheek redder" or "no left-versus-right redness difference beyond the noise floor".
+
+## YouCam's own score wobble (`engine/scores.py`, `engine/youcam_noise.json`)
+
+With the owner's written yes, 12 face crops (six front-lit, six backlit, no treatment) went through YouCam's SD skin analysis (15 concerns); 10 were scored, two backlit ones rejected as too dark. Per concern: SD and exploratory MDC95 from the front-lit captures, and how far accepted backlit captures moved. Texture +29.9, moisture +29.2, radiance +19.9 from light alone. `/judge-scores` compares a before/after pair of YouCam raw scores against that wobble ("within noise", "beyond noise", or "beyond noise, but light alone moved this score the same way"). One person, one session, selection bias from the rejected photos, exploratory thresholds (`spike/youcam-lighting-results.md`). Raw per-photo scores are not in this repository.
+
+## Evidence (one person, one room; see `spike/`)
+
+- 12 photos, 36 window-front vs window-behind pairs (skin unchanged): naive redness change exceeds the noise floor in 36/36; the gate refuses 34/36; the left-versus-right cheek contrast exceeds its floor in 2/36 (a contrast, not a lighting control) (`spike/results.md`).
+- Matched pairs are closer than mismatched pairs, P(matched < mismatched) = 0.96, with tolerances taken from the same repeats (in-sample).
+- Synthetic validation: a known redness added in pixels to one cheek of real photos is flagged on that cheek and never on the other; 2 false alarms in 120 pairs (`spike/inject_results.md`).
+- Not done: a test on a real treatment or concealer. The rubbed-cheek photos were too turned and cut off, and the gate refused them. No photos or per-photo numbers are in this repository.
 
 ## Run
 
-Requires Python 3.10 or newer. The synthetic demo needs no packages or API key.
-
 ```sh
-python3 app.py
+pip install -r requirements-engine.txt   # mediapipe, opencv, numpy<2 (optional; only for measuring photos)
+python3 app.py                            # http://127.0.0.1:8766
+python3 -m unittest discover -v           # 58 tests, no photos, no network
+python3 demo/check_flow.py                # browser check with stand-in fingerprints (needs Playwright)
 ```
 
-Open http://127.0.0.1:8766. Leave a capture-condition box unchecked and compare to see the pause state. Confirm lighting, camera and pose to see the invented texture +5 and pore -2 differences.
+Without the optional packages the page loads and `/compare-photos` answers 503 with the reason.
 
-## Implemented behavior
+## Limits
 
-- Validates completed results and raw scores from 1–100; higher scores are more favorable.
-- Compares shared concerns only after explicit lighting, camera and pose confirmations.
-- Provides consent-gated photo controls, clears stale results when photos change, and supports two-result comparison.
-- Includes an HTTPS upload/task/poll client and local HTTP routes tested with simulated service responses. Live analysis (verified once, see below) is disabled by default; running the command above never enables it.
-- Keeps credentials out of the browser and avoids logging photos or request contents.
+Cosmetic colour readings, not diagnoses. A measured change cannot show that a product caused it. Face landmarks need a roughly frontal, fully visible face. Thresholds come from one person's repeats. The contrast detector only sees a left-versus-right difference larger than 4.65 a* units.
 
-## Current limits
+## Optional YouCam client
 
-Live verified once: on 2026-10-20 the client ran a full upload, skin-analysis task and poll against the real YouCam API with one consenting adult's selfie (not included in this repository). It returned raw scores texture 67.4 and pore 59.4 (higher is more favorable; the ui_score shown by YouCam, 75 and 72, is adjusted and not used for comparison). That run found the API also returns summary items without raw_score (all, skin_age, resize_image); the parser now skips them (covered by a test). Only that single run was made; the default application still makes no external calls and its demo scores are invented.
+`SKINTRACE_LIVE=1 YOUCAM_API_KEY=<key> python3 app.py` enables `/analysis/start` and `/analysis/poll` (upload, task, poll; consent required; the key is read from the environment). Verified once on 2026-10-20 with one consenting adult's selfie (raw scores texture 67.4, pore 59.4). It is not used by the engine.
 
-Capture confirmations are user statements, not scientific validation. Cosmetic scores are not diagnoses, and score differences cannot prove treatment effects. The local server is a development prototype, not a public hosting configuration.
-
-## Verification
-
-```sh
-python3 -m unittest discover -v
-python3 demo/check_flow.py
-```
-
-The browser check requires Playwright, Chromium and the local application running. It exercises the blocked and confirmed synthetic comparison and disabled-live disclosure. Automated tests cover score parsing, comparison, consent, upload/task handling, transport and local HTTP behavior.
-
-## Prototype video
-
-`demo/storyboard.yaml` and `demo/check_flow.py` reproduce the synthetic walkthrough. The corrected local render is 95.7 seconds at 1920 × 1080, with original offline narration and music. It repeatedly discloses invented scores and pending live validation. It is a prototype preview, not the final submission video.
-
-## License
-
-MIT; see LICENSE.
-
-## Optional live mode
-
-`SKINTRACE_LIVE=1 YOUCAM_API_KEY=<your key> python3 app.py` enables photo analysis. Photos are sent to YouCam only after the consent box is ticked. The key is read from the environment and never stored.
+MIT licence; see LICENSE.

@@ -1,4 +1,4 @@
-title: SkinTrace prototype walkthrough
+title: SkinTrace measured comparison prototype
 url: http://127.0.0.1:8766/
 viewport: [1440, 1000]
 scale: 1.5
@@ -6,45 +6,50 @@ voice: af_heart
 mood: calm
 calm: true
 max_seconds: 175
+# Draft for review, not a completed end-to-end photo demonstration.
+# No private photos, external requests, or simulated photo measurements in this take.
+# Add a consent-cleared real local photo-comparison take after review; do not imply
+# the score arithmetic below demonstrates the photo engine or live integration.
 beats:
-  - card: {kind: title, tag: Cosmetic comparison prototype, heading: SkinTrace, sub: "Check capture conditions before comparing **cosmetic scores**."}
-    say: "Did your skin change, or did the lighting change? SkinTrace puts capture conditions before cosmetic score comparisons."
-  - say: "This is the offline demo mode. The scores on screen are invented samples, so you can try the comparison guardrails without sending any photo."
+  - card: {kind: title, tag: Cosmetic comparison research prototype, heading: SkinTrace, sub: "Before trusting a difference, **check the capture**."}
+    say: "Did your skin change, or did the lighting change? SkinTrace explores how to question a cosmetic comparison before trusting the number."
+  - say: "The rebuilt interface accepts two photos. Its local engine measures face position, head angle, brightness, and cheek colour from their pixels. This walkthrough does not upload a photo."
     do:
-      - move: '.scores'
-      - pause: 5
-      - callout: Synthetic scores throughout
-  - say: "The two samples have different texture and pore scores. Before displaying the differences, we ask whether the capture conditions match."
+      - scroll: '#compare'
+      - move: '#before'
+      - move: '#after'
+      - callout: Photo engine not demonstrated here
+  - say: "The optional YouCam checkbox authorizes sending both photos, only after the local check accepts the pair. We are leaving it off. The integrated path has simulated-service tests, not a live end-to-end verification."
     do:
-      - scroll: '#form'
-      - move: '#lighting'
-  - say: "Leave a condition unchecked, and SkinTrace pauses the comparison. A number alone should not encourage an unsupported conclusion."
+      - move: '#yc'
+      - callout: No photos sent in this walkthrough
+  - say: "Here is the first experiment: twelve photos of one person, with the window in front or behind. The gate refused thirty-four of thirty-six cross-light pairs. Two still exceeded the cheek contrast threshold."
     do:
-      - click: '#submit'
-      - wait: '#result h2'
-      - zoom: '#result'
-        seconds: 5
-      - callout: Capture conditions come first
-  - say: "Now confirm the same lighting, the same camera and settings, and the same face position and angle. These are user confirmations, not scientific validation."
+      - scroll: 'section:has(#t2)'
+      - move: '.proof'
+  - say: "That does not establish reliable skin-change detection. Held-out comparisons in the same conditions were also refused about fifty-eight percent of the time. Frequent retakes are an unresolved usability problem."
     do:
-      - click: '#lighting'
-      - click: '#camera'
-      - click: '#pose'
-  - say: "The comparison now shows texture up five points and pores down two. Higher raw scores are more favorable. Neither change proves a treatment worked."
+      - move: 'section:has(#t2) .muted'
+      - callout: Strict gate, unresolved usability
+  - say: "We also sent twelve authorized face crops to YouCam. Ten returned scores; two backlit captures were rejected as too dark. This table summarizes accepted captures, not repeated calls on one image."
     do:
-      - click: '#submit'
-      - wait: 'text=Cosmetic score differences'
-      - zoom: '#result'
-        seconds: 6
-      - callout: Differences do not prove causation
-  - say: "The photo interface requires consent before sending an image. By default, live analysis is switched off. A person turns it on with their own YouCam key."
+      - scroll: '#t4'
+      - wait: '#noise tbody tr'
+      - move: '#noise'
+  - say: "These exploratory thresholds come from one person in one session. Excluding dark captures can bias the result. The experiment validates neither the local gate nor treatment detection."
     do:
-      - scroll: '#analysis'
-      - move: '#consent'
-      - callout: Live analysis off by default
-  - say: "We verified the live path once, with one consenting adult's selfie: upload, analysis task, and polling returned raw texture of sixty seven and pore of fifty nine. That is one run, not a clinical result."
+      - scroll: '#judge'
+      - callout: One person, exploratory thresholds
+  - say: "This separate calculator uses invented example scores. Texture changes from fifty-five to eighty. It compares that difference with the measured score wobble and flags when lighting moved the score in the same direction."
     do:
-      - move: '#analyze'
-      - pause: 3
-  - card: {kind: outro, heading: SkinTrace, sub: "Capture conditions first. **Interpret changes carefully.**", tags: [Python, YouCam API, Consent, MIT]}
-    say: "SkinTrace helps people question a comparison before trusting it. Cosmetic scores are not diagnoses. SkinTrace shows the guardrails, and the live YouCam path works."
+      - move: '#jb'
+      - move: '#ja'
+      - click: '#jgo'
+      - wait: '#jout tbody tr'
+      - scroll: '#jout'
+      - callout: Invented inputs, real score arithmetic
+  - say: "A difference beyond this small sample's noise floor is not proof of improvement, and cannot show that a product caused it. Real treatment validation and intended-user testing remain undone."
+    do:
+      - move: '#jout'
+  - card: {kind: outro, heading: SkinTrace, sub: "Measure the setup. **Question the difference.**", tags: [Python, YouCam API, Local measurements, MIT]}
+    say: "SkinTrace is a research prototype for more cautious cosmetic comparisons. Its limits are part of the result."

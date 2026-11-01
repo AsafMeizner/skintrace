@@ -56,18 +56,6 @@ class AppTests(unittest.TestCase):
         self.assertEqual(self.post('/analysis/poll', started), (200, {'status': 'success', 'scores': {'texture': 66.0}}))
         self.assertEqual(self.post('/analysis/poll', started)[0], 400)
 
-    def test_photo_comparison_validates_scores_and_conditions(self):
-        payload = {'source': 'photos', 'before': {'texture': 42, 'pore': 60}, 'after': {'texture': 49}, 'lighting': True, 'camera': True, 'pose': True}
-        status, result = self.post('/compare', payload)
-        self.assertEqual(status, 200)
-        self.assertEqual(result['changes'], {'texture': 7})
-        payload['pose'] = False
-        self.assertFalse(self.post('/compare', payload)[1]['comparable'])
-        for bad in (None, {}, {'texture': True}, {'texture': 101}, {'texture': '50'}):
-            payload['after'] = bad
-            self.assertEqual(self.post('/compare', payload)[0], 400)
-        self.assertEqual(self.transport.calls, [])
-
     def test_no_consent_no_network(self):
         self.assertEqual(self.post('/analysis/start', self.photo(False))[0], 400)
         self.assertEqual(self.transport.calls, [])
@@ -88,6 +76,181 @@ class AppTests(unittest.TestCase):
         self.assertEqual(status, 502)
         self.assertNotIn('signature', json.dumps(result))
         self.assertEqual(self.server.analysis_tasks, set())
+
+
+class ComparePhotosTests(unittest.TestCase):
+    """/compare-photos with an injected measurer (no mediapipe, no images)."""
+    FP = {'scale': .34, 'cx': .5, 'cy': .5, 'inside_frame': True, 'roll_deg': 0.0, 'yaw': 0.02, 'pitch': 0.03,
+          'left_cheek_L': 56.0, 'right_cheek_L': 55.0, 'left_cheek_a': 15.0, 'right_cheek_a': 15.0, 'light_dir': 0.01}
+
+    def post(self, measure, body):
+        import json as j, base64 as b
+        from threading import Thread
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
+        server = make_server(('127.0.0.1', 0), measure=measure)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            req = Request(f'http://127.0.0.1:{server.server_port}/compare-photos', data=j.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+            try:
+                with urlopen(req) as r:
+                    return r.status, j.load(r)
+            except HTTPError as e:
+                with e:
+                    return e.code, j.load(e)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_comparable_pair_returns_cheek_verdict(self):
+        import base64 as b
+        data = b.b64encode(b'x').decode()
+        status, out = self.post(lambda d: dict(self.FP), {'before': data, 'after': data})
+        self.assertEqual(status, 200)
+        self.assertTrue(out['comparable'])
+        self.assertEqual(out['cheeks']['verdict'], 'no left-versus-right redness difference beyond the noise floor')
+
+    def test_different_light_is_refused_with_retake_advice(self):
+        import base64 as b
+        data = b.b64encode(b'x').decode()
+        prints = iter([dict(self.FP), {**self.FP, 'left_cheek_L': 70.0, 'right_cheek_L': 70.0}])
+        status, out = self.post(lambda d: next(prints), {'before': data, 'after': data})
+        self.assertEqual(status, 200)
+        self.assertFalse(out['comparable'])
+        self.assertTrue(out['reasons'][0]['retake'])
+
+    def test_no_face_gives_a_plain_422(self):
+        import base64 as b
+        data = b.b64encode(b'x').decode()
+        status, out = self.post(lambda d: None, {'before': data, 'after': data})
+        self.assertEqual(status, 422)
+        self.assertIn('No face', out['error'])
+
+    def test_missing_packages_gives_503_and_bad_body_400(self):
+        import base64 as b
+        data = b.b64encode(b'x').decode()
+        def boom(d): raise ImportError()
+        self.assertEqual(self.post(boom, {'before': data, 'after': data})[0], 503)
+        self.assertEqual(self.post(lambda d: None, {'before': 'not base64!', 'after': data})[0], 400)
+
+
+class JudgeScoresTests(unittest.TestCase):
+    def call(self, path, body=None):
+        import json as j
+        from threading import Thread
+        from urllib.request import Request, urlopen
+        from urllib.error import HTTPError
+        server = make_server(('127.0.0.1', 0), measure=lambda d: None)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            req = Request(f'http://127.0.0.1:{server.server_port}{path}', data=None if body is None else j.dumps(body).encode(),
+                          headers={'Content-Type': 'application/json'})
+            try:
+                with urlopen(req) as r:
+                    return r.status, j.load(r)
+            except HTTPError as e:
+                with e:
+                    return e.code, j.load(e)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def test_judge_scores_marks_light_sensitive_change(self):
+        status, out = self.call('/judge-scores', {'before': {'texture': 55, 'wrinkle': 80}, 'after': {'texture': 80, 'wrinkle': 81}})
+        self.assertEqual(status, 200)
+        verdicts = {r['concern']: r['verdict'] for r in out['rows']}
+        self.assertEqual(verdicts['wrinkle'], 'within noise')
+        self.assertIn('light alone', verdicts['texture'])
+
+    def test_judge_scores_rejects_bad_input(self):
+        for bad in ({'before': {'texture': 500}, 'after': {'texture': 5}}, {'before': 'x', 'after': {}}, {'before': {'a': 5}, 'after': {'b': 5}}):
+            self.assertEqual(self.call('/judge-scores', bad)[0], 400)
+
+    def test_youcam_noise_table_served(self):
+        import json as j
+        from urllib.request import urlopen
+        from threading import Thread
+        server = make_server(('127.0.0.1', 0), measure=lambda d: None)
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            with urlopen(f'http://127.0.0.1:{server.server_port}/youcam-noise') as r:
+                self.assertEqual(len(j.load(r)['concerns']), 15)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+
+class YouCamInComparisonTests(unittest.TestCase):
+    FP = ComparePhotosTests.FP
+    PNG = b'\x89PNG\r\n\x1a\n' + b'x' * 20
+
+    class Client:
+        def __init__(self): self.started = []
+        def start(self, image, kind, consent=False, actions=None):
+            self.started.append(actions); return 't%d' % len(self.started)
+        def poll_once(self, task): return {'texture': 55.0 if task == 't1' else 80.0, 'wrinkle': 80.0}
+
+    def post(self, measure, client, body):
+        import json as j
+        from threading import Thread
+        from urllib.request import Request, urlopen
+        server = make_server(('127.0.0.1', 0), client=client, measure=measure)
+        server.sleep = lambda s: None
+        thread = Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            req = Request(f'http://127.0.0.1:{server.server_port}/compare-photos', data=j.dumps(body).encode(), headers={'Content-Type': 'application/json'})
+            with urlopen(req) as r:
+                return j.load(r)
+        finally:
+            server.shutdown()
+            server.server_close()
+            thread.join()
+
+    def body(self, **kw):
+        import base64 as b
+        d = b.b64encode(self.PNG).decode()
+        return {'before': d, 'after': d, 'before_type': 'image/png', 'after_type': 'image/png', 'youcam': True, 'consent': True, **kw}
+
+    def test_comparable_pair_goes_to_youcam_and_is_judged_against_wobble(self):
+        client = self.Client()
+        out = self.post(lambda d: dict(self.FP), client, self.body())
+        self.assertEqual(out['youcam']['status'], 'ok')
+        self.assertEqual(len(client.started), 2)
+        self.assertEqual(len(client.started[0]), 15)
+        verdicts = {r['concern']: r['verdict'] for r in out['youcam']['rows']}
+        self.assertIn('light alone', verdicts['texture'])
+
+    def test_refused_pair_spends_no_youcam_units(self):
+        client = self.Client()
+        prints = iter([dict(self.FP), {**self.FP, 'scale': 0.9}])
+        out = self.post(lambda d: next(prints), client, self.body())
+        self.assertEqual(out['youcam']['status'], 'skipped')
+        self.assertEqual(client.started, [])
+
+    def test_no_key_says_off_and_no_consent_is_a_400(self):
+        out = self.post(lambda d: dict(self.FP), None, self.body())
+        self.assertEqual(out['youcam']['status'], 'off')
+        from urllib.error import HTTPError
+        with self.assertRaises(HTTPError) as ctx:
+            self.post(lambda d: dict(self.FP), self.Client(), self.body(consent=False))
+        self.assertEqual(ctx.exception.code, 400)
+        ctx.exception.close()
+
+
+class YouCamFailureTests(YouCamInComparisonTests):
+    def test_youcam_transport_failure_still_returns_local_verdict(self):
+        class Broken(self.Client):
+            def start(self, *a, **k): raise OSError('down')
+        out = self.post(lambda d: dict(self.FP), Broken(), self.body())
+        self.assertTrue(out['comparable'])
+        self.assertEqual(out['youcam']['status'], 'error')
 
 
 if __name__ == '__main__':

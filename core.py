@@ -1,4 +1,4 @@
-"""Offline YouCam result parsing. No network calls or medical conclusions."""
+"""Offline YouCam result parsing. No network calls or medical conclusions. Photo comparison lives in engine/."""
 from math import isfinite
 
 
@@ -33,13 +33,3 @@ def parse_result(payload):
     if not scores:
         raise ValueError('No raw scores in analysis output')
     return scores
-
-
-def compare(before, after, *, same_lighting, same_camera, same_pose):
-    """Describe score changes only when capture conditions match by user report."""
-    if not all(value is True for value in (same_lighting, same_camera, same_pose)):
-        return {'comparable': False, 'reason': 'Retake both photos with matching lighting, camera and pose.', 'changes': {}}
-    common = before.keys() & after.keys()
-    if not common:
-        raise ValueError('No shared skin concerns')
-    return {'comparable': True, 'changes': {key: round(after[key] - before[key], 2) for key in sorted(common)}, 'note': 'Higher raw scores mean more favorable cosmetic assessments. Changes do not establish treatment effects or medical improvement.'}
